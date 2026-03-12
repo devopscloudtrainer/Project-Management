@@ -1,2 +1,0 @@
-SQL Queries for Webapp operations #TO-DO
-PLSQL Queries for Webapp operations #TO-DO
