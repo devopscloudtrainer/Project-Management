@@ -74,3 +74,36 @@ SELECT name, default_version FROM pg_available_extensions ORDER BY name;
 🚪 Exit psql
 bash\q
 
+
+
+-- Install the extension
+CREATE EXTENSION IF NOT EXISTS sslinfo;
+
+-- Now check SSL
+SELECT ssl_is_used();
+
+-- See full SSL details
+SELECT ssl_version(), ssl_cipher(), ssl_client_dn();
+
+-- Check server address (proxy IP vs RDS IP)
+SELECT inet_server_addr(), inet_server_port();
+
+-- Confirm connection info
+SELECT current_database(), current_user, now();
+```
+
+Expected output:
+```
+ ssl_is_used
+-------------
+ t            ← t = true, SSL is active
+(1 row)
+
+ ssl_version
+-------------
+ TLSv1.3
+(1 row)
+```
+
+---
+
