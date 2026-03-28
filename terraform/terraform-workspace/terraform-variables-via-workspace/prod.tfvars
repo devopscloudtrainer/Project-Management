@@ -1,0 +1,5 @@
+instance_type = "t3.large"
+instance_name = "webserver-prod"
+sg_name = "prod-security-group"
+ami = "ami-0ffef61f6dc37ae89"
+region = "ap-south-1"

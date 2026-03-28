@@ -1,0 +1,5 @@
+instance_type = "t3.medium"
+instance_name = "webserver-stage"
+sg_name = "stage-security-group"
+ami = "ami-0ffef61f6dc37ae89"
+region = "ap-south-1"

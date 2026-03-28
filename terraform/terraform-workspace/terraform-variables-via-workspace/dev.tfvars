@@ -1,0 +1,5 @@
+instance_type = "t2.micro"
+instance_name = "webserver-dev"
+sg_name = "dev-security-group"
+ami = "ami-0ffef61f6dc37ae89"
+region = "ap-south-1"
