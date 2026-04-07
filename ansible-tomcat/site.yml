@@ -1,0 +1,98 @@
+---
+- hosts: webservers
+  become: true
+  vars:
+    tomcat_version: "11.0.0"
+    tomcat_major: "11"
+    tomcat_url: "https://archive.apache.org/dist/tomcat/tomcat-{{ tomcat_major }}/v{{ tomcat_version }}/bin/apache-tomcat-{{ tomcat_version }}.tar.gz"
+    tomcat_install_dir: "/opt/tomcat"
+    tomcat_home: "{{ tomcat_install_dir }}/apache-tomcat-{{ tomcat_version }}"
+    tomcat_user: "ansible"
+    tomcat_group: "ansible"
+
+  tasks:
+    - name: Install Java 21
+      yum:
+        name: "java-21*"
+        state: present
+
+    - name: Create /opt/tomcat directory
+      file:
+        path: "{{ tomcat_install_dir }}"
+        state: directory
+        owner: "{{ tomcat_user }}"
+        group: "{{ tomcat_group }}"
+        mode: "0755"
+
+    - name: Download Tomcat {{ tomcat_version }}
+      get_url:
+        url: "{{ tomcat_url }}"
+        dest: "{{ tomcat_install_dir }}/apache-tomcat-{{ tomcat_version }}.tar.gz"
+        mode: "0644"
+
+    - name: Extract Tomcat archive
+      unarchive:
+        src: "{{ tomcat_install_dir }}/apache-tomcat-{{ tomcat_version }}.tar.gz"
+        dest: "{{ tomcat_install_dir }}"
+        remote_src: yes
+        creates: "{{ tomcat_home }}"
+
+    - name: Set ownership and permissions on Tomcat directory
+      file:
+        path: "{{ tomcat_home }}"
+        owner: "{{ tomcat_user }}"
+        group: "{{ tomcat_group }}"
+        mode: "0775"
+        state: directory
+        recurse: yes
+
+    - name: Deploy tomcat-users.xml
+      template:
+        src: templates/tomcat-users.xml.j2
+        dest: "{{ tomcat_home }}/conf/tomcat-users.xml"
+        owner: "{{ tomcat_user }}"
+        group: "{{ tomcat_group }}"
+        mode: "0640"
+      notify: Restart Tomcat
+
+    - name: Deploy manager context.xml (allow remote access)
+      template:
+        src: templates/manager-context.xml.j2
+        dest: "{{ tomcat_home }}/webapps/manager/META-INF/context.xml"
+        owner: "{{ tomcat_user }}"
+        group: "{{ tomcat_group }}"
+        mode: "0644"
+      notify: Restart Tomcat
+
+    - name: Deploy host-manager context.xml (allow remote access)
+      template:
+        src: templates/host-manager-context.xml.j2
+        dest: "{{ tomcat_home }}/webapps/host-manager/META-INF/context.xml"
+        owner: "{{ tomcat_user }}"
+        group: "{{ tomcat_group }}"
+        mode: "0644"
+      notify: Restart Tomcat
+
+    - name: Start Tomcat
+      shell: "nohup {{ tomcat_home }}/bin/startup.sh > /dev/null 2>&1 &"
+      become: true
+      become_user: "{{ tomcat_user }}"
+      args:
+        creates: "{{ tomcat_home }}/logs/catalina.out"
+
+    - name: Deploy SampleWebApp WAR
+      copy:
+        src: /home/ansible/webapp.war
+        dest: "{{ tomcat_home }}/webapps/webapp.war"
+        owner: "{{ tomcat_user }}"
+        group: "{{ tomcat_group }}"
+        mode: "0644"
+
+  handlers:
+    - name: Restart Tomcat
+      shell: |
+        {{ tomcat_home }}/bin/shutdown.sh || true
+        sleep 3
+        nohup {{ tomcat_home }}/bin/startup.sh > /dev/null 2>&1 &
+      become: true
+      become_user: "{{ tomcat_user }}"

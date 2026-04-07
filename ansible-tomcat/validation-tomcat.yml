@@ -1,0 +1,156 @@
+---
+- hosts: webservers
+  become: true
+  vars:
+    tomcat_version: "11.0.0"
+    tomcat_home: "/opt/tomcat/apache-tomcat-{{ tomcat_version }}"
+    tomcat_port: 8080
+    tomcat_admin_user: "admin"
+    tomcat_admin_pass: "admin"
+    app_context: "webapp"
+
+  tasks:
+
+    # ── 1. Java Check ──────────────────────────────────────────────────────
+    - name: "[1/8] Verify Java is installed"
+      command: java -version
+      register: java_check
+      changed_when: false
+      failed_when: java_check.rc != 0
+
+    - name: Print Java version
+      debug:
+        msg: " Java: {{ java_check.stderr }}"
+
+    # ── 2. Process Check ───────────────────────────────────────────────────
+    - name: "[2/8] Verify Tomcat process is running"
+      shell: ps aux | grep -v grep | grep catalina
+      register: process_check
+      changed_when: false
+      failed_when: process_check.rc != 0
+
+    - name: Print Tomcat process
+      debug:
+        msg: " Tomcat PID found: {{ process_check.stdout }}"
+
+    # ── 3. Port Check ──────────────────────────────────────────────────────
+    - name: "[3/8] Verify port {{ tomcat_port }} is listening"
+      wait_for:
+        host: localhost
+        port: "{{ tomcat_port }}"
+        timeout: 30
+        state: started
+      register: port_check
+
+    - name: Print port check
+      debug:
+        msg: " Port {{ tomcat_port }} is open and listening"
+
+    # ── 4. Catalina Log Check ─────────────────────────────────────────────
+    - name: "[4/8] Confirm Tomcat started successfully in logs"
+      shell: grep -i "Server startup in" {{ tomcat_home }}/logs/catalina.out
+      register: log_check
+      changed_when: false
+      failed_when: log_check.rc != 0
+
+    - name: Print startup log
+      debug:
+        msg: " Log: {{ log_check.stdout }}"
+
+    - name: Check for SEVERE errors in logs"
+      shell: grep -c "SEVERE" {{ tomcat_home }}/logs/catalina.out || true
+      register: severe_check
+      changed_when: false
+
+    - name: Warn on SEVERE log entries
+      debug:
+        msg: "  SEVERE entries found in catalina.out: {{ severe_check.stdout }} occurrences"
+      when: severe_check.stdout | int > 0
+
+    # ── 5. Root URL Check ─────────────────────────────────────────────────
+    - name: "[5/8] Check Tomcat root URL returns HTTP 200"
+      uri:
+        url: "http://localhost:{{ tomcat_port }}/"
+        status_code: 200
+        timeout: 10
+      register: root_check
+
+    - name: Print root URL status
+      debug:
+        msg: " Root URL HTTP status: {{ root_check.status }}"
+
+    # ── 6. App URL Check ──────────────────────────────────────────────────
+    - name: "[6/8] Check deployed app URL returns HTTP 200"
+      uri:
+        url: "http://localhost:{{ tomcat_port }}/{{ app_context }}/"
+        status_code: 200
+        timeout: 10
+      register: app_check
+
+    - name: Print app URL status
+      debug:
+        msg: " App URL HTTP status: {{ app_check.status }}"
+
+    # ── 7. Manager Auth Check ─────────────────────────────────────────────
+    - name: "[7/8] Validate Manager GUI login with admin credentials"
+      uri:
+        url: "http://localhost:{{ tomcat_port }}/manager/html"
+        user: "{{ tomcat_admin_user }}"
+        password: "{{ tomcat_admin_pass }}"
+        force_basic_auth: yes
+        status_code: 200
+        timeout: 10
+      register: manager_check
+
+    - name: Print Manager GUI status
+      debug:
+        msg: " Manager GUI HTTP status: {{ manager_check.status }}"
+
+    - name: Validate Manager API — list deployed apps
+      uri:
+        url: "http://localhost:{{ tomcat_port }}/manager/text/list"
+        user: "{{ tomcat_admin_user }}"
+        password: "{{ tomcat_admin_pass }}"
+        force_basic_auth: yes
+        status_code: 200
+        timeout: 10
+        return_content: yes
+      register: manager_api_check
+
+    - name: Print deployed apps from Manager API
+      debug:
+        msg: " Deployed apps: {{ manager_api_check.content }}"
+
+    # ── 8. Host Manager Auth Check ────────────────────────────────────────
+    - name: "[8/8] Validate Host Manager login with admin credentials"
+      uri:
+        url: "http://localhost:{{ tomcat_port }}/host-manager/html"
+        user: "{{ tomcat_admin_user }}"
+        password: "{{ tomcat_admin_pass }}"
+        force_basic_auth: yes
+        status_code: 200
+        timeout: 10
+      register: hostmgr_check
+
+    - name: Print Host Manager status
+      debug:
+        msg: " Host Manager HTTP status: {{ hostmgr_check.status }}"
+
+    # ── Final Summary ─────────────────────────────────────────────────────
+    - name: "VALIDATION SUMMARY"
+      debug:
+        msg:
+          - "================================================"
+          - "         TOMCAT VALIDATION REPORT               "
+          - "================================================"
+          - "[1/8] Java Installed       :  OK"
+          - "[2/8] Tomcat Process       :  Running"
+          - "[3/8] Port {{ tomcat_port }} Listening    :  OK"
+          - "[4/8] Catalina Startup Log :  OK"
+          - "[5/8] Root URL HTTP 200    :  {{ root_check.status }}"
+          - "[6/8] App URL HTTP 200     :  {{ app_check.status }}"
+          - "[7/8] Manager GUI + API    :  {{ manager_check.status }}"
+          - "[8/8] Host Manager         :  {{ hostmgr_check.status }}"
+          - "================================================"
+          - "  ALL CHECKS PASSED — Tomcat is healthy    "
+          - "================================================"
